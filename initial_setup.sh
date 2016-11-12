@@ -20,8 +20,10 @@ apt-get -qq install -y git unzip \
     osm2pgsql
 
 # Move the postgresql data to the EBS volume
+mkdir -p $PG_DATA_DIR
 /etc/init.d/postgresql stop
-sed -i "s/data_directory = '\/var\/lib\/postgresql\/${PG_MAJOR}\/main'/data_directory = '\/${PG_DATA_DIR}\/${PG_MAJOR}\/main'/" /etc/postgresql/9.3/main/postgresql.conf
+sed -i "s/^data_directory = .*$/# data_directory = /" /etc/postgresql/$PG_MAJOR/main/postgresql.conf
+echo "data_directory = ${PG_DATA_DIR}/${PG_MAJOR}/main" >> /etc/postgresql/$PG_MAJOR/main/postgresql.conf
 mv /var/lib/postgresql/$PG_MAJOR $PG_DATA_DIR
 chown -R postgres:postgres $PG_DATA_DIR
 /etc/init.d/postgresql start
