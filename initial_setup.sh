@@ -11,6 +11,7 @@ PGPASSWORD="osmpassword"
 export PGUSER
 export PGPASSWORD
 OSM2PGSQL_CACHE=$(free -m | grep -i 'mem:' | sed 's/[ \t]\+/ /g' | cut -f4,7 -d' ' | tr ' ' '+' | bc)
+OSM2PGSQL_CACHE=$(( $OSM2PGSQL_CACHE > 27000 ? 27000 : $OSM2PGSQL_CACHE ))
 OSM2PGSQL_PROCS=$(grep -c 'model name' /proc/cpuinfo)
 
 apt-add-repository -y ppa:tilezen
@@ -43,7 +44,7 @@ wget --quiet --directory-prefix $EBS_MOUNT --timestamping \
 SOURCE_DIR="${EBS_MOUNT}/vector-datasource"
 git clone https://github.com/tilezen/vector-datasource.git $SOURCE_DIR
 
-osm2pgsql --create --slim --cache 27000 --hstore-all \
+osm2pgsql --create --slim --cache $OSM2PGSQL_CACHE --hstore-all \
     --host localhost \
     --number-processes $OSM2PGSQL_PROCS \
     --style $EBS_MOUNT/vector-datasource/osm2pgsql.style \
