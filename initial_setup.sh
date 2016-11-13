@@ -11,8 +11,9 @@ PGPASSWORD="osmpassword"
 export PGUSER
 export PGPASSWORD
 OSM2PGSQL_CACHE=$(free -m | grep -i 'mem:' | sed 's/[ \t]\+/ /g' | cut -f4,7 -d' ' | tr ' ' '+' | bc)
-OSM2PGSQL_CACHE=$(( $OSM2PGSQL_CACHE > 27000 ? 27000 : $OSM2PGSQL_CACHE ))
+OSM2PGSQL_CACHE=$(( $OSM2PGSQL_CACHE > 33000 ? 33000 : $OSM2PGSQL_CACHE ))
 OSM2PGSQL_PROCS=$(grep -c 'model name' /proc/cpuinfo)
+OSMOSIS_WORKDIR="${EBS_MOUNT}/osmosis"
 
 apt-add-repository -y ppa:tilezen
 apt-get -qq update
@@ -20,7 +21,7 @@ apt-get -qq install -y git unzip \
     postgresql-${PG_MAJOR} postgresql-contrib postgis postgresql-${PG_MAJOR}-postgis-2.1 \
     build-essential autoconf libtool pkg-config \
     python-dev python-virtualenv libgeos-dev libpq-dev python-pip python-pil libmapnik2.2 libmapnik-dev mapnik-utils python-mapnik \
-    osm2pgsql
+    osm2pgsql osmosis
 
 # Move the postgresql data to the EBS volume
 mkdir -p $PG_DATA_DIR
@@ -50,6 +51,26 @@ osm2pgsql --create --slim --cache $OSM2PGSQL_CACHE --hstore-all \
     --style $EBS_MOUNT/vector-datasource/osm2pgsql.style \
     --flat-nodes $EBS_MOUNT/flatnodes \
     $EBS_MOUNT/planet-latest.osm.pbf
+
+# Prepare for catching up with diffs
+mkdir -p $OSMOSIS_WORKDIR
+osmosis --read-replication-interval-init workingDirectory=$OSMOSIS_WORKDIR
+DATE_FOR_URL=$(date -d "$(date -r ${EBS_MOUNT}/planet-latest.osm.pbf) - 1 day" '+Y=%Y&m=%m&d=%d&H=%H&i=%M&s=%S')
+wget -O ${WORKDIR_OSM}/state.txt "https://osm.mazdermind.de/replicate-sequences/?${DATE_FOR_URL}"
+
+echo >$EBS_MOUNT/osm-update.sh <<CMD_EOF
+#!/bin/bash
+export PGPASSWORD="${PGPASSWORD}"
+osmosis --read-replication-interval workingDirectory=${WORKDIR_OSM} \
+    --simplify-change \
+    --write-xml-change /tmp/changes.osc.gz
+osm2pgsql --append --slim --cache $OSM2PGSQL_CACHE --hstore-all \
+    --host localhost \
+    --number-processes $OSM2PGSQL_PROCS \
+    --style $EBS_MOUNT/vector-datasource/osm2pgsql.style \
+    --flat-nodes $EBS_MOUNT/flatnodes \
+    /tmp/changes.osc.gz
+CMD_EOF
 
 # Download and import supporting data
 cd $SOURCE_DIR
