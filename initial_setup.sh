@@ -8,6 +8,7 @@ PG_DATA_DIR="${EBS_MOUNT}/postgresql"
 PGDATABASE="osm"
 PGUSER="osm"
 PGPASSWORD="osmpassword"
+export PGUSER
 export PGPASSWORD
 OSM2PGSQL_CACHE=$(free -m | grep -i 'mem:' | sed 's/[ \t]\+/ /g' | cut -f4,7 -d' ' | tr ' ' '+' | bc)
 OSM2PGSQL_PROCS=$(grep -c 'model name' /proc/cpuinfo)
@@ -42,9 +43,11 @@ wget --quiet --directory-prefix $EBS_MOUNT --timestamping \
 SOURCE_DIR="${EBS_MOUNT}/vector-datasource"
 git clone https://github.com/tilezen/vector-datasource.git $SOURCE_DIR
 
-osm2pgsql --slim -C $OSM2PGSQL_CACHE -j $OSM2PGSQL_PROCS \
-    -U $PGUSER -d $PGDATABASE -H localhost \
-    -S $EBS_MOUNT/vector-datasource/osm2pgsql.style \
+osm2pgsql --create --slim --cache 27000 --hstore-all \
+    --host localhost \
+    --number-processes $OSM2PGSQL_PROCS \
+    --style $EBS_MOUNT/vector-datasource/osm2pgsql.style \
+    --flat-nodes $EBS_MOUNT/flatnodes \
     $EBS_MOUNT/planet-latest.osm.pbf
 
 # Download and import supporting data
