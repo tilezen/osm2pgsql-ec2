@@ -56,21 +56,22 @@ osm2pgsql --create --slim --cache $OSM2PGSQL_CACHE --hstore-all \
 mkdir -p $OSMOSIS_WORKDIR
 osmosis --read-replication-interval-init workingDirectory=$OSMOSIS_WORKDIR
 DATE_FOR_URL=$(date -d "$(date -r ${EBS_MOUNT}/planet-latest.osm.pbf) - 1 day" '+Y=%Y&m=%m&d=%d&H=%H&i=%M&s=%S')
-wget -O ${WORKDIR_OSM}/state.txt "https://osm.mazdermind.de/replicate-sequences/?${DATE_FOR_URL}"
+wget -O $OSMOSIS_WORKDIR/state.txt "https://osm.mazdermind.de/replicate-sequences/?${DATE_FOR_URL}"
 
-echo >$EBS_MOUNT/osm-update.sh <<CMD_EOF
+cat >$EBS_MOUNT/osm-update.sh <<CMD_EOF
 #!/bin/bash
 export PGPASSWORD="${PGPASSWORD}"
-osmosis --read-replication-interval workingDirectory=${WORKDIR_OSM} \
-    --simplify-change \
-    --write-xml-change /tmp/changes.osc.gz
-osm2pgsql --append --slim --cache $OSM2PGSQL_CACHE --hstore-all \
-    --host localhost \
-    --number-processes $OSM2PGSQL_PROCS \
-    --style $EBS_MOUNT/vector-datasource/osm2pgsql.style \
-    --flat-nodes $EBS_MOUNT/flatnodes \
-    /tmp/changes.osc.gz
+osmosis --read-replication-interval workingDirectory=${OSMOSIS_WORKDIR} \\
+    --simplify-change \\
+    --write-xml-change $OSMOSIS_WORKDIR/changes.osc.gz
+osm2pgsql --append --slim --cache $OSM2PGSQL_CACHE --hstore-all \\
+    --host localhost \\
+    --number-processes $OSM2PGSQL_PROCS \\
+    --style $EBS_MOUNT/vector-datasource/osm2pgsql.style \\
+    --flat-nodes $EBS_MOUNT/flatnodes \\
+    $OSMOSIS_WORKDIR/changes.osc.gz
 CMD_EOF
+chmod +x $EBS_MOUNT/osm-update.sh
 
 # Download and import supporting data
 cd $SOURCE_DIR
