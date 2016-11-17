@@ -57,6 +57,11 @@ mkdir -p $OSMOSIS_WORKDIR
 osmosis --read-replication-interval-init workingDirectory=$OSMOSIS_WORKDIR
 DATE_FOR_URL=$(date -d "$(date -r ${EBS_MOUNT}/planet-latest.osm.pbf) - 1 day" '+Y=%Y&m=%m&d=%d&H=%H&i=%M&s=%S')
 wget -O $OSMOSIS_WORKDIR/state.txt "https://osm.mazdermind.de/replicate-sequences/?${DATE_FOR_URL}"
+# Fix the configuration.txt that the packaged osmosis generates
+cat >$OSMOSIS_WORKDIR/configuration.txt <<CMD_EOF
+baseUrl=http://planet.openstreetmap.org/replication/minute
+maxInterval = 0
+CMD_EOF
 
 cat >$EBS_MOUNT/osm-update.sh <<CMD_EOF
 #!/bin/bash
@@ -64,12 +69,25 @@ export PGPASSWORD="${PGPASSWORD}"
 osmosis --read-replication-interval workingDirectory=${OSMOSIS_WORKDIR} \\
     --simplify-change \\
     --write-xml-change $OSMOSIS_WORKDIR/changes.osc.gz
+
+if [ $? -ne 0 ]; then
+    echo "Error: Osmosis minutely update failed";
+    rm -f $OSMOSIS_WORKDIR/changes.osc.gz
+    exit 1;
+fi
+
 osm2pgsql --append --slim --cache $OSM2PGSQL_CACHE --hstore-all \\
     --host localhost \\
+    --database $PGDATABASE \\
     --number-processes $OSM2PGSQL_PROCS \\
     --style $EBS_MOUNT/vector-datasource/osm2pgsql.style \\
     --flat-nodes $EBS_MOUNT/flatnodes \\
     $OSMOSIS_WORKDIR/changes.osc.gz
+
+if [ $? -ne 0 ]; then
+    echo "Error: osm2pgsql minutely load failed";
+    exit 1;
+fi
 CMD_EOF
 chmod +x $EBS_MOUNT/osm-update.sh
 
@@ -90,4 +108,3 @@ deactivate
 # Downloading Who's on First neighbourhoods data
 wget --quiet -P $EBS_MOUNT https://s3.amazonaws.com/mapzen-tiles-assets/wof/dev/wof_neighbourhoods.pgdump
 pg_restore --clean -d $PGDATABASE -U $PGUSER -h localhost -O "${EBS_MOUNT}/wof_neighbourhoods.pgdump"
-
